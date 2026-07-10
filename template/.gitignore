@@ -1,6 +1,9 @@
 # Local Claude Code permission overrides. Personal to this machine.
 .claude/settings.local.json
 
+# Scratch capture from the automation verification checklist.
+run-stderr.txt
+
 # Windows and editor cruft.
 Thumbs.db
 desktop.ini

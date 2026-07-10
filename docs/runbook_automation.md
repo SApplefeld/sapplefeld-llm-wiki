@@ -7,7 +7,9 @@ present. It picks up where
 trusts the KB, this one registers the scheduled tasks and proves they work.
 Read it in order, and do not skip the verification checklist. Three failure
 modes here produce a run that looks fine and does nothing; the checklist is
-how you catch them before they cost you a silent week.
+how you catch them before they cost you a silent week. For the design behind
+the permission model, the trust gate, and the skill-by-name and model-pin
+mechanics this runbook relies on, see [architecture.md](architecture.md).
 
 ## What automation does
 
@@ -90,6 +92,10 @@ that happens to be. Pin `--model sonnet`. `register-task.ps1` pins it; a
 hand-run verification command must pin it too.
 
 ## Registering the tasks
+
+Run these from an **elevated** PowerShell (Run as administrator). Registering a
+scheduled task with an S4U principal, or for any account, requires elevation;
+without it `Register-ScheduledTask` fails with an access-denied error.
 
 Register both tasks under the owning account, from the engine checkout. Ingest
 first:
@@ -180,21 +186,29 @@ claude -p "Use the wiki-ingest skill." --model sonnet 2> run-stderr.txt
 ```
 
 Observable: the command exits, `git status --porcelain` is empty, and
-`git log --oneline -3` shows no new `Ingest:` commit. An empty inbox must
-produce no commit and a clean tree. This proves the permission allowlist works
-before any real content is at stake. (Delete `run-stderr.txt` when done; it is
-a scratch file, not part of the KB.)
+`git log --oneline -3` shows no new `Ingest:` commit. This proves only that the
+skill is invoked and that an empty inbox is a clean no-op. It does not prove the
+allowlist works, because an empty inbox performs no allow-gated write: a fully
+untrusted KB produces exactly this same clean result. The allowlist is proven by
+the canary in step 4, where a real write must land. (Delete `run-stderr.txt`
+when done; it is a scratch file, not part of the KB.)
 
-**3. Trust is real: no trust warning on stderr.** From the same run:
+**3. Trust is real: the allowlist is in force.** From the same run's stderr:
 
 ```
-Select-String -Path run-stderr.txt -Pattern 'has not been trusted'
+Select-String -Path run-stderr.txt -Pattern 'Ignoring .* permissions'
 ```
 
-Observable: no match. A match means the workspace is untrusted for this
-account and every write was silently refused; stop and trust the workspace
-(open Claude Code interactively in the KB once and accept the dialog) before
-going further. The trust warning appears only on stderr, which is why step 2
+Observable: no match. A match (the current warning reads "Ignoring N
+permissions.allow entries ... this workspace has not been trusted") means the
+workspace is untrusted for this account and every write was silently refused;
+stop and trust the workspace (open Claude Code interactively in the KB once and
+accept the dialog) before going further. Match on `Ignoring .* permissions`
+rather than a specific sentence, so a reworded warning still trips it. Because
+this check reads stderr for a warning that may change, treat step 4's canary as
+the decisive proof: a write that actually lands cannot happen in an untrusted
+workspace, so a green step 4 confirms trust regardless of the warning text. The
+trust warning appears only on stderr, which is why step 2
 redirects it to a file.
 
 **4. A canary file goes from inbox to pushed commit.** Drop a small readable
@@ -269,6 +283,19 @@ move. If dropped files sit in `inbox/` across several scheduled windows and
 never reach `sources/`, the task is broken, not idle, and the troubleshooting
 table below says where to look.
 
+**One run at a time per KB.** The ingest and lint tasks both edit `wiki/`,
+`index.md`, and `log.md`, and each begins by committing whatever it finds
+already changed on disk (the reconcile step, which recovers a crashed run). If
+an ingest fires while a lint is mid-edit, the ingest can commit the lint's
+half-finished work under a `Reconcile:` subject and push it. The state
+converges once the interrupting run's own commit lands, so nothing is lost, but
+a half-written page can reach the remote briefly and the commit is
+misattributed. Schedule the two tasks so their windows do not overlap: the
+default ingest cadence (every four hours) and the default lint time (Sunday
+03:00) can coincide, so give a KB with a long-running lint either a wider ingest
+cadence or a lint time no ingest window covers. The same caution applies to
+running an interactive session in a KB while its scheduled task may fire.
+
 ## The hard invariant, restated
 
 **One Windows account per knowledge base. Never two.** This is not a
@@ -289,7 +316,7 @@ its own Claude login, its own git credentials, and its own scheduled tasks.
 
 | Symptom | Likely cause | Check |
 | --- | --- | --- |
-| Task runs but nothing changes | Untrusted workspace | `Select-String -Path run-stderr.txt -Pattern 'has not been trusted'`; if it matches, trust the KB under the owning account. |
+| Task runs but nothing changes | Untrusted workspace | `Select-String -Path run-stderr.txt -Pattern 'Ignoring .* permissions'`; if it matches, trust the KB under the owning account. |
 | Task runs but nothing changes | Slash-command prompt instead of prose | Confirm the action's arguments read `-p "Use the wiki-ingest skill."`, not `/wiki-ingest`: `(Get-ScheduledTask -TaskName wiki-ingest-eleos-kb).Actions[0].Arguments`. |
 | Task runs but nothing changes | Model too small or unpinned | Confirm the same arguments contain `--model sonnet`. |
 | Commits appear but never reach the remote | S4U has no network credentials for an HTTPS push | `git log origin/main..HEAD` lists commits; try `git push` by hand as that account. If the hand push works, switch to `-LogonType Password` or an SSH deploy key. |

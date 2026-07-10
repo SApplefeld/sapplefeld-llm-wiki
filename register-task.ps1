@@ -250,7 +250,9 @@ if ([string]::IsNullOrWhiteSpace($Cadence)) {
 }
 
 $startAt = (Get-Date).Date.AddMinutes(5)
-$indefinite = New-TimeSpan -Days 3650
+# The largest repetition span Task Scheduler accepts, so a repeating trigger does
+# not silently stop years from now.
+$indefinite = [TimeSpan]::MaxValue
 switch ($Cadence) {
     'Hourly' {
         $trigger = New-ScheduledTaskTrigger -Once -At $startAt -RepetitionInterval (New-TimeSpan -Hours 1) -RepetitionDuration $indefinite

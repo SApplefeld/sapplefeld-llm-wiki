@@ -28,11 +28,18 @@ Every knowledge base built from this engine has three layers:
 
 **Ingest.** A file arrives in `inbox/`. The ingest run reads it, moves the
 original to `sources/` (never deleted, never edited again), writes a summary
-page for it, and revises the ten to fifteen existing wiki pages that source
-actually touches, in one pass. It updates `index.md` and appends a `log.md`
-entry, then commits and pushes. Designed for unattended, headless execution:
-crash-safe by construction, because each source is fully processed and
-committed before the next one starts.
+page for it, and revises the existing wiki pages that source actually touches,
+in one pass. It updates `index.md` and appends a `log.md` entry, then commits
+and pushes.
+
+Designed for unattended, headless execution. Every completed source is
+committed before the next one starts, so a crash loses at most the source in
+flight. It does not lose that one either: the move into `sources/` happens
+before the commit, so a crash in between leaves the file tracked by neither the
+inbox nor git, and every run begins by reconciling exactly that state. The same
+step recovers a lint or query run that died mid-edit, committing what it
+recovered under its own `Reconcile:` subject rather than folding it into a
+source's commit.
 
 **Query.** Given a question, the query operation reads `index.md` first, opens
 the relevant pages, and synthesizes an answer with citations back to wiki
@@ -75,10 +82,22 @@ Each knowledge base is a permanently disjoint domain: two entities' knowledge
 bases are never meant to merge, diverge from a common ancestor, or share
 history. Branches exist to partition versions of the same content; that model
 does not fit content that must never cross-contaminate. A repo per knowledge
-base gives each domain independent history and independent identity: the repo
-boundary provides the separation, and the permission model enforces it. The
-agent running in a KB has no shell verb that can write outside the repo, and
-no way to push to any remote other than that KB's own `origin`.
+base gives each domain independent history and independent identity.
+
+Separation rests on two boundaries, and they are not the same strength:
+
+- **Writes and pushes are bounded by the permission model.** The agent running
+  in a KB has no shell verb that can write outside the repo, and no way to push
+  to any remote other than that KB's own `origin`.
+- **Reads are bounded by the Windows account.** `Read`, `Glob`, and `Grep` are
+  allowed unscoped, so an agent can read any file its Windows user can read.
+  Credential-shaped paths are denied outright, but an ordinary file is not.
+  This is why one Windows account owns exactly one knowledge base, never two:
+  the account is the read boundary, and NTFS enforces it. Co-locating two
+  entities' knowledge bases under one account would put one entity's sources
+  within reach of the other's agent.
+
+See [docs/architecture.md](docs/architecture.md) for the full model.
 
 For the same reason, the engine itself is vendored (copied) into every KB
 repo rather than installed as a shared plugin. A vendored copy means each KB

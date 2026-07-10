@@ -14,8 +14,9 @@ needs to run: the three-layer content directories (`inbox/`, `sources/`,
 allowlist under `.claude/`, and the three skills (`wiki-ingest`, `wiki-lint`,
 `wiki-query`). No shared runtime crosses into the KB, so an engine update is a
 deliberate copy into a specific KB, never a change that touches every KB at
-once. For the architecture and the reasons behind it, see the engine
-[README](../README.md).
+once. For the pattern at a glance, see the engine [README](../README.md); for
+the engineering design and the reasons behind it, see
+[architecture.md](architecture.md).
 
 ## Prerequisites
 
