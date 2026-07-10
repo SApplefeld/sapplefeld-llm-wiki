@@ -37,7 +37,8 @@ Key decisions (all decided 2026-07-09 in the brainstorming session):
   log.md          <- append-only run digest (ingests, lint passes, queries filed back)
   CLAUDE.md       <- the schema: page types, conventions, workflows; per-KB, specialized over time
   .claude/        <- vendored engine skills (wiki-ingest, wiki-lint, wiki-query) + settings.json permission
-                     allowlist scoped so headless runs need no prompts
+                     allowlist + kb-move.ps1 and kb-commit.ps1, the two vetted helpers. A headless run needs
+                     no prompts only in a trusted workspace; see Chapter 1.
   .gitignore
 ```
 
@@ -60,6 +61,7 @@ Acceptance: a fresh Claude session opened in an instantiated KB, given only the 
 
 ### 3. wiki-ingest skill
 Model: fable
+Status: Complete
 The core operation, written for unattended headless execution. Behavior: snapshot the inbox listing at run start (files arriving mid-run wait for the next run); if empty, exit without committing anything. Per source, in order: read it (PDFs and images via native reading; a file type that cannot be read gets moved to `sources/` with a stub summary page flagging it for manual attention, never silently dropped), move the original to `sources/`, write its summary page, revise the relevant existing wiki pages (the 10-to-15-pages-in-one-pass discipline, guided by the schema), update index.md, append the log.md entry, and make exactly one commit for that source. Push once at run end. Crash-safe by construction: each source is fully processed and committed before the next begins, so an interrupted run leaves no half-ingested state and the next run resumes cleanly.
 
 The move and every commit go through the Section 1 helpers, which are the only privileged operations the allowlist grants: `pwsh -NoProfile -File ./.claude/kb-move.ps1 -Name <file>` and `pwsh -NoProfile -File ./.claude/kb-commit.ps1 -Path <paths> -Message <msg> [-Push]`. The skill must emit those command strings exactly, because the permission rules are prefix matches and a near-miss stalls an unattended run on a prompt nobody can answer. The final commit of a run carries `-Push`; `-Push` also pushes when its own call has nothing to commit, so an earlier source's commit never strands locally.
@@ -138,6 +140,7 @@ Review Findings: Adversarial, 1 Critical (refuted with evidence, see above), 3 M
 
 Next: Section 3, wiki-ingest skill
 Commit Model: Commit-and-Push
+Superseded by Chapter 3 on one point: `log.md` entries carry no commit hash. A log entry cannot name the commit that contains it.
 
 ### Chapter 2 - 2026-07-09
 Completed: Section 2, Schema template (the per-KB CLAUDE.md)
@@ -157,4 +160,30 @@ Acceptance, re-run after the fixes against a fresh instantiated KB with headless
 Review Findings: 4 Major, 3 Minor, all from the adversarial review; no Criticals. Majors fixed: the git-discipline section described a raw-git workflow the permission model denies and never named the two helpers (rewritten as "Moving and committing", with the exact command strings); no contradiction rule existed (added); content-shaped injection passed the untrusted-input filter (closed by the contradiction rule plus an explicit sentence that a source's say-so is a claim, not authority); summary-page naming collided with its own "no dates, no numeric prefixes" rule for a realistic filename (slug derivation stated, with the date carve-out explained). Minors fixed: the `Staleness horizon:` token appeared twice, so a loose grep in Section 4 would have read the literal `<value>` and silently no-opped every staleness check (now unique and anchored); the unreadable-source case is now named in the per-source summary contract. Minor accepted: two deliberate restatements of the two highest-stakes rules (sources immutability, schema-and-skill-decide), kept as reinforcement.
 
 Next: Section 3, wiki-ingest skill
+Commit Model: Commit-and-Push
+
+### Chapter 3 - 2026-07-09
+Completed: Section 3, wiki-ingest skill
+Implemented By: implementer-fable (explicit `fable` override, authorized by the `Fable Spend` header), then one fix round at the same tier carrying both reviews' findings; main session hardened `settings.json` and the pin test
+Metrics: 2 review rounds (adversarial + security in parallel, then a fix round); 0 NEEDS_CONTEXT; 0 tier escalations; advisor unavailable
+
+Decisions / Surprises:
+
+1. **`log.md` entries carry no commit hash (design fix).** The frozen format had `Commit: <short sha>`, which is impossible: `log.md` is inside the commit it would name, and a commit's hash covers its own content. The alternatives were two commits per source (which breaks the one-commit-per-source crash-safety property) or dropping the field. Dropped. `git log -- sources/<file>` answers the question, and the schema already names git history as the authoritative timeline. Corrected in `template/log.md`, `template/CLAUDE.md`, and the contract. This supersedes the format frozen in Chapter 1.
+
+2. **The Critical both reviewers found independently: the crash window.** `kb-move.ps1` is a bare `Move-Item` with no git operation, so between the move and the commit (minutes of model work) the state is `sources/<file>` untracked and `inbox/<file>` gone. A crash there left the source invisible to both the wiki and git forever: the next run snapshots an empty inbox and never sees it, and every `kb-commit` stages only its own named paths, so nothing sweeps it up. A human re-dropping the file made it worse, because `kb-move` refuses (destination exists) and the skill read that refusal as "duplicate drop, already ingested." The crashed run's uncommitted `index.md` and `log.md` edits would also ride into the next source's commit, producing a commit that references a summary page never committed. Fixed with a reconcile step that runs before the inbox snapshot, driven by `git status --porcelain`. The "crash-safe by construction" claim was false as written and is now narrowed to what is true: every completed source is committed before the next begins, a crash loses at most the in-flight source's uncommitted work, and reconcile recovers it. Verified independently by the main session, not only by the implementer.
+
+3. **Three more unattended-failure Majors, all fixed and independently verified.** A filename `kb-move.ps1` refuses (a leading dash, a colon from a scanner) used to stop the whole run, wedging every future scheduled run behind it with nobody watching; it now skips that source, reports it, and continues. The `-Name <file>` example was unquoted and mis-binds on `Report v1.pdf`, the same defect class already fixed for `-Path`; it is now quoted. A failed push stranded every commit of the run, and the empty-inbox fast path meant no later run would catch up; the empty-inbox path now checks `git log @{u}..HEAD` and flushes. Two filenames that slugify identically (`Report v1.pdf`, `report-v1.pdf`) silently clobbered one summary page; the skill now disambiguates and never overwrites. The implementer also closed a gap the brief missed: a snapshot of only-skipped files would never flush pending commits.
+
+4. **The exfiltration channel is real, and is now closed for credentials (confirmed both directions).** `Read`, `Glob`, and `Grep` are allowed unscoped. A headless run in a KB did read an out-of-repo absolute path and print its contents, so an injected instruction could read a secret and write it into a wiki page that is then pushed. `deny` globs were then confirmed to match absolute out-of-repo paths precisely: a denied decoy stayed unreadable while a non-matching sibling in the same directory still read. `settings.json` now denies `Read`/`Grep`/`Glob` on `**/.credentials.json`, `**/.claude.json`, `**/.git-credentials`, `**/.ssh/**`, and `**/.aws/**`, and `Test-KbStructure.ps1` pins it (the pin was watched go red). Residual, stated honestly: an ordinary file elsewhere on the machine is still readable, so the boundary for non-credential data remains behavioral. The security reviewer's judgment stands: that residual rises to Critical if two legally separated KBs ever share one Windows account, which Section 7's runbook must forbid outright.
+
+   Note the trap: Claude Code silently ignores a settings file that fails validation in headless mode, so one unrecognized rule would void the entire allow and deny set with no error. Every added rule was verified by observing a real denial and a real allow, never by the file merely parsing.
+
+5. **The scheduled task must pin `--model sonnet`.** A `haiku` run of the ingest skill silently did nothing (no move, no commit) while emitting success-shaped text; the same KB and prompt under `sonnet` ingested correctly. An unpinned headless spawn inherits the harness default. Section 7 records this.
+
+6. A link checker must strip inline code spans as well as fenced blocks. Mine did not, and reported three false positives against the schema's own backticked `[Acme Corp](acme-corp.md)` examples. Section 4's lint brief carries this, since a lint pass without it would chase the schema's examples forever.
+
+Review Findings: Adversarial, 1 Critical, 4 Major, 3 Minor. Security, 3 Major, 3 Minor, verdict CONCERNS. Both converged independently on the crash window. Every Critical and Major is fixed and re-verified except the unscoped-read residual (Decision 4), carried to the finishing pass and to Section 7 as a hard no-co-location invariant. Minors fixed: a 25 MB bound on the unreadable-file path; the commit-message claim rephrased as a directive rather than an enforced property. Minor accepted: the `-Path` delimiter contract is stated in four places (schema, skill, helper help text, contract), a real drift surface that no cheap single-sourcing removes.
+
+Next: Section 4, wiki-lint skill
 Commit Model: Commit-and-Push

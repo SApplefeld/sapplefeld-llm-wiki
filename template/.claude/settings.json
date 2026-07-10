@@ -14,6 +14,11 @@
       "Bash(pwsh -NoProfile -File .claude/kb-commit.ps1:*)"
     ],
     "deny": [
+      "Read(**/.credentials.json)", "Grep(**/.credentials.json)", "Glob(**/.credentials.json)",
+      "Read(**/.claude.json)",
+      "Read(**/.git-credentials)", "Grep(**/.git-credentials)",
+      "Read(**/.ssh/**)", "Grep(**/.ssh/**)",
+      "Read(**/.aws/**)", "Grep(**/.aws/**)",
       "Write(./sources/**)", "Edit(./sources/**)",
       "Write(./inbox/**)", "Edit(./inbox/**)",
       "Write(./.git/**)", "Edit(./.git/**)",

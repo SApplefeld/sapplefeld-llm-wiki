@@ -176,8 +176,10 @@ Append-only, newest entries at the bottom, one `##` heading per run:
 ## 2026-07-09 - ingest
 - `sources/some-report.pdf` -> [Some Report](wiki/some-report-summary.md)
   - Revised: [Acme Corp](wiki/acme-corp.md), [Pricing Model](wiki/pricing-model.md)
-  - Commit: `<short sha>`
 ```
+
+An entry names no commit hash: this file is inside the commit it would name, so
+the hash cannot exist when the entry is written. Use `git log -- <source>`.
 
 Lint runs use `## YYYY-MM-DD - lint`; queries filed back use
 `## YYYY-MM-DD - query`. Git history is the authoritative timeline; `log.md`

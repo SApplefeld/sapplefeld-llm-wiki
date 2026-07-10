@@ -120,6 +120,7 @@ $settingsChecks = @(
     'deny array blocks writes under .claude/'
     'deny array blocks raw mv, rm, and cp'
     'deny array blocks raw git push, remote, and config'
+    'deny array blocks reads of credential files'
     'allow array covers wiki page writes'
     'allow array covers the commit helper'
     'allow array covers moving a file out of inbox/'
@@ -165,6 +166,15 @@ if (-not $parsed) {
         (Test-RuleMatch $denyRules '^Bash\(git push') -and
         (Test-RuleMatch $denyRules '^Bash\(git remote') -and
         (Test-RuleMatch $denyRules '^Bash\(git config')
+    )
+
+    # Read is allowed unscoped, so only these deny rules keep an injected instruction
+    # from reading a credential file and writing it into a page that gets pushed.
+    Test-Check -Description 'deny array blocks reads of credential files' -Passed (
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\.credentials\.json\)') -and
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\.git-credentials\)') -and
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\.ssh/') -and
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\.aws/')
     )
 
     # A structurally valid allowlist that omits a verb the ingest flow needs leaves an
