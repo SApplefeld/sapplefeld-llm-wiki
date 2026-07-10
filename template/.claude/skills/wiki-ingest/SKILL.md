@@ -27,9 +27,17 @@ commit it exactly as step 4 commits a normal source. One commit per
 orphan. Any uncommitted edits to `index.md`, `log.md`, or a `wiki/` page
 are that same interrupted work: fold those paths into the orphan's commit
 (the first orphan's, if there are several) so they cannot ride into a
-later source's commit. If such edits exist with no orphan source, commit
-them on their own as a reconcile commit. Count what you reconciled for
-the final report.
+later source's commit.
+
+If the tree is dirty (`index.md`, `log.md`, or a `wiki/` page modified)
+with **no** untracked file under `sources/`, those edits came from some
+other interrupted run, not an ingest. Commit them alone, before touching
+the inbox, under a subject beginning `Reconcile:` that names the files
+recovered; never fold them into a source's commit. `kb-commit.ps1` stages
+the named paths from the working tree as they stand, so an ingest run that
+started on a dirty tree would otherwise commit another run's edits inside a
+source's own commit under that source's message. Count what you reconciled
+for the final report.
 
 ## 2. Snapshot the inbox
 
@@ -137,8 +145,10 @@ the moved source, its summary page, every wiki page you revised,
 
 `-Path` is one string, paths separated by a vertical bar with no spaces
 around it: `-Path "sources/report.pdf|wiki/report-summary.md|index.md|log.md"`.
-The message is a one-line subject naming the source, then a blank line,
-then a short body listing the pages revised.
+The message subject begins `Ingest:` and names the source, then a blank line,
+then a short body listing the pages revised. Every operation prefixes its
+subject the same way (`Ingest:`, `Lint:`, `Query:`, `Reconcile:`), which is
+what makes each one findable on its own in `git log`.
 
 ## 5. Push once, on the run's last commit
 

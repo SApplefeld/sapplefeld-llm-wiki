@@ -69,16 +69,19 @@ Acceptance: run against an empty inbox produces no commits and a clean exit; run
 
 ### 4. wiki-lint skill
 Model: opus
+Status: Complete
 The health pass. Detects and fixes: orphan pages (unreachable from index.md), broken relative links, missing reciprocal cross-references, contradictions between pages (flagged in a `## Contradictions` section of the lint report with both citations; auto-resolved only when one side is clearly superseded by a newer source), stale claims (older than a staleness horizon declared in the KB's CLAUDE.md, with no source backing; Section 2 adds that setting to the schema template's customization points), and index.md drift against the actual page set. Fixes land as commits separate from any ingest commits, with the lint report appended to log.md. Never touches `sources/`.
 Acceptance: against a test KB seeded with one orphan page, one broken link, and one contradiction, the lint run detects all three, fixes the orphan and the link, flags the contradiction with both citations, and commits the fixes.
 
 ### 5. wiki-query skill
 Model: sonnet
+Status: Complete
 The retrieval operation, primarily for interactive sessions. Behavior: read index.md first, open the relevant pages, synthesize an answer with citations to wiki pages and through them to sources, and offer to file a valuable answer back into the wiki as a synthesis page (which then goes through index and cross-reference maintenance like any page).
 Acceptance: in a test KB with known ingested content, a query returns an answer whose citations point at the correct pages; filing the answer back produces a linked, indexed synthesis page.
 
 ### 6. KB instantiation path
 Model: opus
+Status: Complete
 `new-kb.ps1` in the engine repo: parameters for KB name and destination path; copies `template/`, runs `git init -b main`, makes the initial commit, and prints the follow-up steps. Plus a short `docs/instantiation.md` describing the schema-specialization session: an interactive Claude pass in the new KB that walks the CLAUDE.md customization points for the domain (page-type vocabulary, domain entities, citation granularity). Remote creation stays manual and documented (each entity's GitHub identity differs; the script must not assume an account).
 
 The follow-up steps the script prints must lead with **trusting the new workspace**, because a fresh KB is untrusted and Claude Code silently ignores `permissions.allow` in an untrusted workspace (Chapter 1). The schema-specialization session establishes trust as a side effect of being interactive, so instantiation.md sequences it before any headless run.
@@ -86,6 +89,7 @@ Acceptance: running the script on a clean path yields a KB repo passing Section 
 
 ### 7. Automation runbook
 Model: opus
+Status: Complete. Nothing was registered; the real registration is Scott step 1 of Section 8.
 `register-task.ps1` plus `docs/runbook_automation.md`. The script registers a per-user Windows scheduled task (parameters: run-as user, KB repo path, cadence) that runs headless Claude Code (`claude -p`) in the KB folder invoking the ingest skill, "run whether user is logged on or not"; a second registration mode for the weekly lint task. The runbook covers: prerequisites per account (Claude login, git credentials, repo cloned), registration, and a verification checklist: prove the task fires as the intended user, drop a canary file, confirm it lands in `sources/` with its commit pushed to the intended remote, and confirm the headless run completed without permission prompts (the settings.json allowlist is load-bearing here and gets verified, not assumed).
 
 Two mechanics, both confirmed empirically in Chapter 1 and both silent when wrong:
@@ -186,4 +190,87 @@ Decisions / Surprises:
 Review Findings: Adversarial, 1 Critical, 4 Major, 3 Minor. Security, 3 Major, 3 Minor, verdict CONCERNS. Both converged independently on the crash window. Every Critical and Major is fixed and re-verified except the unscoped-read residual (Decision 4), carried to the finishing pass and to Section 7 as a hard no-co-location invariant. Minors fixed: a 25 MB bound on the unreadable-file path; the commit-message claim rephrased as a directive rather than an enforced property. Minor accepted: the `-Path` delimiter contract is stated in four places (schema, skill, helper help text, contract), a real drift surface that no cheap single-sourcing removes.
 
 Next: Section 4, wiki-lint skill
+Commit Model: Commit-and-Push
+
+### Chapter 4 - 2026-07-09
+Completed: Section 4, wiki-lint skill
+Implemented By: implementer-opus, then one fix round at the same tier carrying the review's findings; main session added the Ingest: message prefix for symmetry
+Metrics: 2 review rounds (adversarial, then a fix round); 0 NEEDS_CONTEXT; 0 escalations; advisor unavailable
+
+Decisions / Surprises:
+
+1. **The defect lived in the seam between two skills, and only a reviewer holding both files could see it.** `kb-commit.ps1` stages the paths it is given by name, taking whatever content is on disk. Lint edits `wiki/` pages, `index.md`, and `log.md` throughout its run and commits once at the end. A crashed lint therefore leaves those files dirty, and the next ingest run (daily, versus lint's weekly) folded them into a source's commit. Lint's work landed under an `Ingest:` subject, and a half-applied contradiction resolution was committed with no report explaining it, which is exactly the visibility loss the contradiction rule exists to prevent. Fixed on both sides: ingest folds dirty edits into an orphaned source's commit only when an untracked source actually exists (the same crashed run), and otherwise commits them alone under a `Reconcile:` subject before touching the inbox; lint gained a matching reconcile front step. Verified independently by the main session: with a dirty tree and no orphan source, an ingest run produced `Reconcile: index.md, wiki/widget-market-overview.md` and `Ingest: acme.md` as two separate commits, and the ingest commit did not contain the recovered edit.
+
+2. **The staleness check reset its own clock.** It read a page's last change date with `git log -1 --format=%as -- <page>` and only inspected pages older than the horizon. Any edit refreshed that date, so the busiest pages, the ones most likely to accumulate unsourced claims, were exactly the ones permanently exempted, and lint reported a clean wiki forever. The schema already says an unsourced claim is a defect, unconditionally. Lint now flags every unsourced claim and uses the horizon only to classify it as stale (page unchanged for longer than the horizon) or unsourced. Neither is ever auto-fixed; lint never invents a citation. Verified: a fresh unsourced claim on a page changed today is now flagged, where the old rule exempted it.
+
+3. **The skill contradicted itself on the contradictions heading**, saying `## Contradictions` in one place and `### Contradictions` in another. The schema mandates exactly one `##` heading per run in `log.md`, so `###` is correct. The implementer's resolution was right and the review agreed; only the stale line needed fixing. The spec's literal `## Contradictions` in Section 4 predates the one-heading-per-run rule and is superseded.
+
+4. **All four operations now prefix their commit subject** (`Ingest:`, `Lint:`, `Query:`, `Reconcile:`), which is what makes each one findable on its own in `git log`. Ingest was the one that did not, and the review of Section 4 surfaced it.
+
+5. A conservative behavior worth knowing: when the recovered dirty content looked garbled or untrusted, a lint run refused to auto-commit it and paused for a human rather than reconciling. That is the untrusted-input defense doing its job, and it means an unattended run facing genuinely nonsensical dirty content halts instead of committing it. Judged correct, recorded so it is not mistaken for a hang.
+
+Review Findings: 3 Major, 4 Minor, no Criticals. Majors fixed: the heading contradiction; the staleness clock reset; the lint and ingest crash seam. Minors fixed: auto-resolve guards (an undated source never supersedes a dated one, an uncited claim never supersedes a cited one, three or more disagreeing pages are always flagged in full); a link target resolving to a directory is not broken; the unspecified rename detection was dropped rather than left as a wrong-target risk; failed-push handling stated; the file trimmed from 159 to 145 lines with no guard cut. Minor accepted: the supersede rule is restated in the skill as brief reinforcement of the schema's, a deliberate drift surface.
+
+Next: Section 5, wiki-query skill
+Commit Model: Commit-and-Push
+
+### Chapter 5 - 2026-07-09
+Completed: Section 5, wiki-query skill
+Implemented By: implementer-sonnet (clean first pass, all three acceptance scenarios green), then main-session fixes from the adversarial review
+Metrics: 1 review round; 0 NEEDS_CONTEXT; 0 escalations; advisor unavailable
+
+Decisions / Surprises:
+
+1. **Query inherited the commit seam and lacked the guard.** It is the third skill that commits, and the only one without a reconcile front step. Filing an answer back while a crashed lint's edits sat dirty would have committed and pushed them under a `Query:` subject. Fixed as in its siblings. Verified independently: with `index.md` dirty and no orphan source, a file-back run produced `Reconcile: stray edit in index.md` and `Query: how is the Widget 3000 priced` as separate commits, the `Query:` commit free of the stray edit and correctly including the back-linked page.
+
+2. **The answer-integrity rule was ambiguous exactly where it mattered.** One sentence forbade reasoning from general knowledge when the wiki is silent; another permitted marked parametric content. Two sessions could read the same file and draw the line in different places, which is the failure the property exists to prevent. Rewritten as a single rule: anything presented in the wiki's voice must be grounded in a citable page; everything else is omitted or fenced in a labelled aside saying it is not from the wiki; when the wiki is silent, the answer is that the wiki does not cover it. Added the enforcement clause the reviewer asked for: cite a page only for a claim that page actually states.
+
+3. **Contradiction surfacing covered only half the cases.** The skill handled a contradiction recorded in place on a page, but not two pages that simply disagree because separate ingests wrote them and lint has not yet reconciled them. That second case is the common one in a young wiki. Both now surface both values with both citations.
+
+4. **Re-filing the same question was not idempotent**: it revised the synthesis page in place but added a second `index.md` entry and a second back-link on every page it drew on. Self-healing, since lint would clean it, but corrected at the source.
+
+Acceptance verified with real runs against a wiki the engine itself produced: each citation was checked by opening the cited page and confirming it states the claim; a plain query made no commit; the 2019-revenue question produced "the wiki does not know" rather than an invented figure.
+
+Review Findings: 4 Major, 3 Minor, no Criticals. All four Majors fixed. Minors fixed: the commit bullet now names every back-linked page explicitly and shows a concrete bar-delimited `-Path`. Minor accepted, with reasoning recorded: "never file back in a headless run" is unenforceable, because a session has no reliable in-run signal that it is headless. The load-bearing guard is the adjacent "never file back without being asked", and a headless prompt contains no file-back request. Section 7 registers no query task. If query is ever scheduled with a prompt that asks it to answer and file, that guard is the only one and it does not hold.
+
+Next: Section 6, KB instantiation path
+Commit Model: Commit-and-Push
+
+### Chapter 6 - 2026-07-09
+Completed: Section 6, KB instantiation path
+Implemented By: implementer-opus, plus main-session fixes from the adversarial review; the main session also placed `docs/instantiation.md`
+Metrics: 1 review round; 0 NEEDS_CONTEXT; 0 escalations; advisor unavailable
+
+Decisions / Surprises:
+
+1. **A repository hook blocks subagents from writing into `docs/`.** The implementer wrote `instantiation.md` to `.kit/scratch/` and handed it back, correctly refusing to route around the guard. The main session placed it. The guard exists to stop subagents dumping reports into `docs/`, and it also catches a legitimate spec-mandated document. Worth a kaizen note.
+
+2. **The script stranded the operator on the exact fresh-account path this effort exists to serve.** Any failure after the destination directory was created (a missing git identity, which is precisely what a fresh ASR or NEO Windows account has) left a half-populated directory behind. The operator would fix their git config, re-run, and be refused with "destination already exists and is not empty", a misleading second error for someone who did nothing wrong. The script now names the partial path and says to remove it before retrying. It deletes nothing on their behalf. Also added a `git`-on-PATH guard, since a missing executable threw before any exit code was checked and surfaced as a stack trace rather than a refusal.
+
+3. **The manual trust-edit path in `instantiation.md` was a silent-failure trap.** It told the operator to set `projects` / `hasTrustDialogAccepted` without saying that the real `~/.claude.json` stores some keys with forward slashes and some with escaped backslashes, and that a non-matching key is not an error but is simply ignored. The KB then stays untrusted while looking trusted. The doc now names the interactive dialog as the only reliable method and the file as a way to verify.
+
+Review Findings: 1 Major, 2 Minor, verdict APPROVED_WITH_CONCERNS. All three fixed. Verified by the main session on PowerShell 5.1 and 7 both: the happy path commits 14 files including all three skills and leaves a clean tree; the structural check passes with `-RequireSchema -RequireSkills`; a non-empty destination, a whitespace name, and a failing structural check each refuse with one legible line; `-WhatIf` creates nothing; the new partial-path hint fires.
+
+Next: Section 7, automation runbook
+Commit Model: Commit-and-Push
+
+### Chapter 7 - 2026-07-09
+Completed: Section 7, automation runbook, as far as it can go without Scott
+Implemented By: implementer-opus; main session placed `docs/runbook_automation.md` and verified the refusals
+Metrics: 0 review rounds at section close (the finishing pass covers it); 0 NEEDS_CONTEXT; 0 escalations; advisor unavailable
+
+Decisions / Surprises:
+
+1. **No scheduled task was registered.** Registering one writes to machine-global state and would put a recurring headless Claude Code run on Scott's machine. That needs his explicit yes, which this run did not have. Confirmed by the main session that nothing matching `wiki`, `kb`, `ingest`, or `lint` exists in Task Scheduler. Everything up to registration is real and verified; the registration itself and the canary run are the first steps of Section 8.
+
+2. **`register-task.ps1` refuses to register a task for an untrusted KB**, which is precisely Section 7's "the allowlist is load-bearing here and gets verified, not assumed." It also refuses a KB with no `origin` remote, because `kb-commit.ps1` pushes only to `origin` and such a task would commit locally forever and never push. Verified: every refusal fires with one legible line, and `-WhatIf` on a trusted KB prints the arguments `-p "Use the wiki-ingest skill." --model sonnet` and registers nothing.
+
+3. **`~/.claude.json` cannot be parsed by a naive `ConvertFrom-Json` on this machine.** It contains at least one property with an empty-string name, which throws on PowerShell 5.1 and requires `-AsHashtable` on 7 (a switch 5.1 does not have). The script branches on host version, using `JavaScriptSerializer` on 5.1. Without this the trust check would crash for every user on every run. The implementer found and fixed it rather than papering over it.
+
+4. **The trust check can only ever verify the current account.** The task runs as the account named by `-User`, whose `~/.claude.json` is a different file. The implementer chose to refuse rather than warn-and-proceed when that account is not the current one, unless `-SkipTrustCheck` is passed. That is stricter than the brief asked for and is the right call: proceeding would imply a verification that never happened. Accepted.
+
+5. **`.kit/scratch/contract.md`, the frozen shared contract four dispatches were briefed to read, was deleted mid-effort** by a subagent's cleanup of `.kit/scratch/`. The Section 7 implementer reported it missing and proceeded from the spec's Chapters, which by then carried every fact the contract held. No content was lost, but a gitignored scratch file is the wrong home for a contract that outlives several dispatches. The Chapters are the durable record and should have been the source from the start.
+
+Review Findings: none yet. Section 7's review runs in the finishing pass, over the whole changeset.
+Next: finishing-work, then Section 8 (Scott)
 Commit Model: Commit-and-Push
