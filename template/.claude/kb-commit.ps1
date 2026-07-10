@@ -14,23 +14,30 @@ checked, so a failed git step stops the run loudly rather than reporting a
 success that did not happen.
 
 .PARAMETER Path
-One or more repo-relative paths to stage and commit. Each must be under
-sources/ or wiki/, or be exactly index.md or log.md, and must exist on disk.
+The repo-relative paths to stage and commit, separated by a vertical bar. Each
+must be under sources/ or wiki/, or be exactly index.md or log.md, and must
+exist on disk. A vertical bar is used because Windows forbids it in a file
+name, so it can never be ambiguous with a path that contains a comma or a
+semicolon. PowerShell passes arguments to a script run with -File as literal
+strings and never splits them into an array, so a single delimited string is
+the only form that survives that call.
 
 .PARAMETER Message
 The commit message. Control characters other than newline are stripped and the
 text is truncated to 2000 characters before use.
 
 .PARAMETER Push
-When set, push the current branch to the origin remote after committing.
+When set, push the current branch to the origin remote after committing. The
+push runs even when this call had nothing to commit, so a commit made by an
+earlier call in the same run reaches origin rather than stranding locally.
 
 .EXAMPLE
-pwsh -NoProfile -File ./.claude/kb-commit.ps1 -Path sources/report.pdf, wiki/report-summary.md -Message "Ingest report.pdf" -Push
+pwsh -NoProfile -File ./.claude/kb-commit.ps1 -Path "sources/report.pdf|wiki/report-summary.md|index.md|log.md" -Message "Ingest report.pdf" -Push
 #>
 [CmdletBinding(SupportsShouldProcess)]
 param(
     [Parameter(Mandatory)]
-    [string[]]$Path,
+    [string]$Path,
 
     [Parameter(Mandatory)]
     [string]$Message,
@@ -68,11 +75,12 @@ function Invoke-GitOrStop {
 # The repo root is the parent of the .claude/ directory this script lives in.
 $repoRoot = (Resolve-Path -LiteralPath (Split-Path -Parent $PSScriptRoot)).ProviderPath
 
-if ($null -eq $Path -or $Path.Count -eq 0) {
+$paths = @($Path -split '\|' | ForEach-Object { $_.Trim() } | Where-Object { $_ -ne '' })
+if ($paths.Count -eq 0) {
     Stop-WithReason 'at least one path is required.'
 }
 
-foreach ($entry in $Path) {
+foreach ($entry in $paths) {
     if ([string]::IsNullOrWhiteSpace($entry)) {
         Stop-WithReason 'a path entry is empty.'
     }
@@ -115,7 +123,7 @@ if (-not $PSCmdlet.ShouldProcess($repoRoot, 'Stage, commit, and optionally push'
     exit 0
 }
 
-$addArgs = @('-C', $repoRoot, 'add', '--') + $Path
+$addArgs = @('-C', $repoRoot, 'add', '--') + $paths
 Invoke-GitOrStop -Arguments $addArgs -FailReason 'git add failed.'
 
 & git -C $repoRoot diff --cached --quiet
