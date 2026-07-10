@@ -5,16 +5,17 @@ Checks that a folder has the KB repo structure the llm-wiki engine expects.
 
 .DESCRIPTION
 Verifies the directories and files a KB repo must contain: inbox/, sources/,
-wiki/, .claude/, .claude/skills/, index.md, log.md, .gitignore, and
-.claude/settings.json.
+wiki/, .claude/, .claude/skills/, index.md, log.md, .gitignore, and the
+.claude/settings.json, kb-move.ps1, kb-commit.ps1, and kb-status.ps1 helpers.
 
 Also checks the permission allowlist, which is load-bearing: a headless run
 cannot answer a permission prompt, so a missing allow rule stalls an
-unattended ingest and a missing deny rule lets it damage sources/. The
-checks confirm settings.json parses, denies writes under sources/, inbox/,
-.git/ and .claude/, denies the raw shell and git verbs that would bypass the
-helpers, and allows the two vetted helpers an ingest calls to move a file
-and to commit.
+unattended ingest and a missing deny rule lets it damage sources/ or read a
+secret. The checks confirm settings.json parses, denies writes under
+sources/, inbox/, .git/ and .claude/, denies every raw git verb and the raw
+shell verbs that would bypass the helpers, denies the Grep tool, denies reads
+of credential files, and allows the three vetted helpers a KB session calls
+to move a file, to commit, and to read status.
 
 Passing this check does not prove a headless run will complete. Claude Code
 ignores permissions.allow entirely in a workspace that has not been trusted,
@@ -97,7 +98,7 @@ foreach ($dir in $requiredDirs) {
     Test-Check -Description "directory exists: $dir" -Passed (Test-Path -LiteralPath $full -PathType Container)
 }
 
-$requiredFiles = @('index.md', 'log.md', '.gitignore', '.claude/settings.json', '.claude/kb-move.ps1', '.claude/kb-commit.ps1')
+$requiredFiles = @('index.md', 'log.md', '.gitignore', '.claude/settings.json', '.claude/kb-move.ps1', '.claude/kb-commit.ps1', '.claude/kb-status.ps1')
 foreach ($file in $requiredFiles) {
     $full = Join-Path $root $file
     Test-Check -Description "file exists: $file" -Passed (Test-Path -LiteralPath $full -PathType Leaf)
@@ -122,12 +123,14 @@ $settingsChecks = @(
     'deny array blocks writes under inbox/'
     'deny array blocks writes under .git/'
     'deny array blocks writes under .claude/'
-    'deny array blocks raw mv, rm, and cp'
-    'deny array blocks raw git push, remote, and config'
+    'deny array blocks raw shell verbs'
+    'deny array blocks every raw git verb'
+    'deny array blocks the Grep tool'
     'deny array blocks reads of credential files'
     'allow array covers wiki page writes'
     'allow array covers the commit helper'
     'allow array covers moving a file out of inbox/'
+    'allow array covers the status helper'
     'allow array grants no raw git write verb'
 )
 
@@ -161,24 +164,33 @@ if (-not $parsed) {
 
     # sources/ immutability and the no-outside-write guarantee hold only if the raw
     # verbs that could bypass the helpers are denied outright.
-    Test-Check -Description 'deny array blocks raw mv, rm, and cp' -Passed (
+    Test-Check -Description 'deny array blocks raw shell verbs' -Passed (
         (Test-RuleMatch $denyRules '^Bash\(mv') -and
         (Test-RuleMatch $denyRules '^Bash\(rm') -and
-        (Test-RuleMatch $denyRules '^Bash\(cp')
+        (Test-RuleMatch $denyRules '^Bash\(cp') -and
+        (Test-RuleMatch $denyRules '^Bash\(ls')
     )
-    Test-Check -Description 'deny array blocks raw git push, remote, and config' -Passed (
-        (Test-RuleMatch $denyRules '^Bash\(git push') -and
-        (Test-RuleMatch $denyRules '^Bash\(git remote') -and
-        (Test-RuleMatch $denyRules '^Bash\(git config')
-    )
+
+    # Every raw git verb is denied outright, so the agent reaches git only through
+    # the vetted helpers, which run it as a pwsh subprocess the rules do not reach.
+    # A prefix rule on git reads (diff, log) could not constrain a --output or a
+    # --no-index that turns a read into an arbitrary write or an out-of-repo read.
+    Test-Check -Description 'deny array blocks every raw git verb' -Passed (Test-RuleMatch $denyRules '^Bash\(git:\*\)$')
+
+    # Grep's path-scoped deny rules do not bind, so the tool is denied outright; no
+    # skill needs it.
+    Test-Check -Description 'deny array blocks the Grep tool' -Passed ($denyRules -contains 'Grep')
 
     # Read is allowed unscoped, so only these deny rules keep an injected instruction
     # from reading a credential file and writing it into a page that gets pushed.
     Test-Check -Description 'deny array blocks reads of credential files' -Passed (
         (Test-RuleMatch $denyRules '^Read\(\*\*/\.credentials\.json\)') -and
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\.claude\.json\)') -and
         (Test-RuleMatch $denyRules '^Read\(\*\*/\.git-credentials\)') -and
         (Test-RuleMatch $denyRules '^Read\(\*\*/\.ssh/') -and
-        (Test-RuleMatch $denyRules '^Read\(\*\*/\.aws/')
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\.aws/') -and
+        (Test-RuleMatch $denyRules '^Read\(\*\*/\*\.pem\)') -and
+        (Test-RuleMatch $denyRules '^Read\(\*\*/id_ed25519\)')
     )
 
     # A structurally valid allowlist that omits a verb the ingest flow needs leaves an
@@ -186,6 +198,7 @@ if (-not $parsed) {
     Test-Check -Description 'allow array covers wiki page writes' -Passed (Test-RuleMatch $allowRules '^Write(\(|$)')
     Test-Check -Description 'allow array covers the commit helper' -Passed (Test-RuleMatch $allowRules '^Bash\(pwsh .*kb-commit\.ps1')
     Test-Check -Description 'allow array covers moving a file out of inbox/' -Passed (Test-RuleMatch $allowRules '^Bash\(pwsh .*kb-move\.ps1')
+    Test-Check -Description 'allow array covers the status helper' -Passed (Test-RuleMatch $allowRules '^Bash\(pwsh .*kb-status\.ps1')
 
     # The agent must reach git writes only through the vetted helpers, never a raw verb.
     Test-Check -Description 'allow array grants no raw git write verb' -Passed (

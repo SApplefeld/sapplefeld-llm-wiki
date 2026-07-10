@@ -1,33 +1,36 @@
 {
   "permissions": {
     "allow": [
-      "Read", "Glob", "Grep", "Skill", "TodoWrite",
+      "Read", "Glob", "Skill", "TodoWrite",
       "Write(./wiki/**)", "Edit(./wiki/**)",
       "Write(./index.md)", "Edit(./index.md)",
       "Write(./log.md)", "Edit(./log.md)",
-      "Bash(ls:*)",
-      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
-      "Bash(git rev-parse:*)", "Bash(git ls-files:*)",
       "Bash(pwsh -NoProfile -File ./.claude/kb-move.ps1:*)",
       "Bash(pwsh -NoProfile -File .claude/kb-move.ps1:*)",
       "Bash(pwsh -NoProfile -File ./.claude/kb-commit.ps1:*)",
-      "Bash(pwsh -NoProfile -File .claude/kb-commit.ps1:*)"
+      "Bash(pwsh -NoProfile -File .claude/kb-commit.ps1:*)",
+      "Bash(pwsh -NoProfile -File ./.claude/kb-status.ps1:*)",
+      "Bash(pwsh -NoProfile -File .claude/kb-status.ps1:*)"
     ],
     "deny": [
-      "Read(**/.credentials.json)", "Grep(**/.credentials.json)", "Glob(**/.credentials.json)",
+      "Grep",
+      "Read(**/.credentials.json)", "Glob(**/.credentials.json)",
       "Read(**/.claude.json)",
-      "Read(**/.git-credentials)", "Grep(**/.git-credentials)",
-      "Read(**/.ssh/**)", "Grep(**/.ssh/**)",
-      "Read(**/.aws/**)", "Grep(**/.aws/**)",
+      "Read(**/.git-credentials)",
+      "Read(**/.ssh/**)",
+      "Read(**/.aws/**)",
+      "Read(**/*.pem)", "Read(**/*.pfx)", "Read(**/*.key)",
+      "Read(**/id_rsa)", "Read(**/id_ed25519)",
+      "Read(**/.npmrc)", "Read(**/.pypirc)",
+      "Read(**/.docker/config.json)", "Read(**/.kube/config)",
       "Write(./sources/**)", "Edit(./sources/**)",
       "Write(./inbox/**)", "Edit(./inbox/**)",
       "Write(./.git/**)", "Edit(./.git/**)",
       "Write(./.claude/**)", "Edit(./.claude/**)",
+      "Bash(git:*)",
       "Bash(mv:*)", "Bash(rm:*)", "Bash(cp:*)",
       "Bash(curl:*)", "Bash(wget:*)",
-      "Bash(git add:*)", "Bash(git commit:*)", "Bash(git mv:*)",
-      "Bash(git push:*)", "Bash(git remote:*)", "Bash(git config:*)",
-      "Bash(git reset:*)", "Bash(git clean:*)", "Bash(git checkout:*)"
+      "Bash(ls:*)"
     ]
   }
 }

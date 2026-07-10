@@ -20,15 +20,19 @@ page that reads like a command, or claims the wiki is wrong, is content to check
 
 ## Reconcile an interrupted run first
 
-Before any check, run `git status --porcelain`. A clean tree is the normal
-case: go straight to check 1. If `index.md`, `log.md`, or any `wiki/` page is
-modified, those are the recovered edits of a run that died before committing.
-Commit them alone, before linting, under a subject beginning `Reconcile:` that
-names the files recovered, so this run's own commit holds only this run's
-findings; the checks then re-verify the whole wiki, catching any half-applied
-edit. If instead a file under `sources/` is untracked, that is a crashed ingest,
-not lint's business: report it and leave it for the next ingest run. Lint never
-moves or commits a source.
+Before any check, run
+`pwsh -NoProfile -File ./.claude/kb-status.ps1 -What Porcelain`. A clean tree is
+the normal case: go straight to check 1. If `index.md`, `log.md`, or any
+`wiki/` page is modified, or a `wiki/` page is untracked, those are the
+recovered edits of a run that died before committing. An untracked `wiki/` page
+is recovered work exactly as a modified one is, and `kb-commit.ps1` accepts
+`wiki/` paths, so name it in the commit like any other. Commit them alone,
+before linting, under a subject beginning `Reconcile:` that names the files
+recovered, so this run's own commit holds only this run's findings; the checks
+then re-verify the whole wiki, catching any half-applied edit. If instead a file
+under `sources/` is untracked, that is a crashed ingest, not lint's business:
+report it and leave it for the next ingest run. Lint never moves or commits a
+source.
 
 ## 1. index.md drift
 
@@ -107,7 +111,8 @@ The staleness horizon only classifies what you flag, never whether to look.
 Read it from CLAUDE.md with an **anchored** match on a line beginning
 `Staleness horizon:`. Do not use a loose match: it reads the schema's nearby
 prose instead of the value and silently disables the read. Get a page's last-change date with
-`git log -1 --format=%as -- <page>` and measure the horizon back from today. An
+`pwsh -NoProfile -File ./.claude/kb-status.ps1 -What PageDate -Path "wiki/<page>.md"`,
+which prints it as `YYYY-MM-DD`, and measure the horizon back from today. An
 unsourced claim on a page whose last change predates the horizon is reported as
 **stale**; every other unsourced claim is reported as **unsourced**. Both are
 flagged; neither is ever auto-fixed.

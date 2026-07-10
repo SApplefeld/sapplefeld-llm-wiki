@@ -14,8 +14,8 @@ sequence and its invariants.
 
 ## 1. Reconcile any leftovers from an interrupted run
 
-Before anything else, run `git status --porcelain`. A clean result is the
-normal case: go to step 2.
+Before anything else, run `pwsh -NoProfile -File ./.claude/kb-status.ps1 -What Porcelain`.
+A clean result is the normal case: go to step 2.
 
 An untracked file under `sources/` is a source that a previous run moved
 out of the inbox and then died before committing. It is invisible to the
@@ -24,25 +24,31 @@ recover it. Finish its ingest now, before touching the inbox: write its
 summary page, or complete the one already on disk, then revise pages,
 update `index.md`, append its `log.md` entry under this run's heading, and
 commit it exactly as step 4 commits a normal source. One commit per
-orphan. Any uncommitted edits to `index.md`, `log.md`, or a `wiki/` page
-are that same interrupted work: fold those paths into the orphan's commit
-(the first orphan's, if there are several) so they cannot ride into a
-later source's commit.
+orphan. Any uncommitted edits to `index.md`, `log.md`, or a `wiki/` page,
+and any untracked `wiki/` page, are that same interrupted work: fold those
+paths into the orphan's commit (the first orphan's, if there are several)
+so they cannot ride into a later source's commit.
 
-If the tree is dirty (`index.md`, `log.md`, or a `wiki/` page modified)
-with **no** untracked file under `sources/`, those edits came from some
-other interrupted run, not an ingest. Commit them alone, before touching
-the inbox, under a subject beginning `Reconcile:` that names the files
-recovered; never fold them into a source's commit. `kb-commit.ps1` stages
-the named paths from the working tree as they stand, so an ingest run that
-started on a dirty tree would otherwise commit another run's edits inside a
-source's own commit under that source's message. Count what you reconciled
-for the final report.
+If the working tree carries recovered work with **no** untracked file
+under `sources/`, those changes came from some other interrupted run, not
+an ingest: a modified `index.md`, `log.md`, or `wiki/` page, or an
+untracked `wiki/` page that a crashed query or lint run wrote but never
+committed. An untracked `wiki/` page is recovered work exactly as a
+modified one is, and `kb-commit.ps1` accepts `wiki/` paths, so name it in
+the commit like any other. Commit them alone, before touching the inbox,
+under a subject beginning `Reconcile:` that names the files recovered;
+never fold them into a source's commit. `kb-commit.ps1` stages the named
+paths from the working tree as they stand, so an ingest run that started on
+a dirty tree would otherwise commit another run's edits inside a source's
+own commit under that source's message. Count what you reconciled for the
+final report.
 
 ## 2. Snapshot the inbox
 
-List `inbox/` exactly once, at the start of the run, with `ls -l inbox/`,
-ignoring `.gitkeep`. That listing, names and sizes both, is the run's
+List `inbox/` exactly once, at the start of the run, with
+`pwsh -NoProfile -File ./.claude/kb-status.ps1 -What Inbox`, which prints one
+line per file as `<bytes><tab><name>` and omits `.gitkeep`. That listing,
+names and sizes both, is the run's
 entire workload. The inbox is a live drop zone: a file arriving after the
 snapshot is not part of this run and waits for the next one. Never re-list
 the inbox later to pick up stragglers.
@@ -52,11 +58,11 @@ the inbox later to pick up stragglers.
 Before stopping, check for commits that never reached origin, whether from
 an earlier run whose push failed or from step 1's reconcile:
 
-    git log --oneline "@{u}..HEAD"
+    pwsh -NoProfile -File ./.claude/kb-status.ps1 -What Unpushed
 
 If it lists any commits, emit step 5's push-only call to flush them, then
-stop. If it lists none, or errors because no upstream is configured, there
-is nothing to flush: make no commits, write nothing, and do not touch
+stop. If it lists none, whether there are none or no upstream is
+configured, there is nothing to flush: make no commits, write nothing, and do not touch
 log.md. Report that the inbox was empty and end the run. When step 1
 reconciled nothing and nothing was unpushed, this is the common case,
 because the schedule fires far more often than files arrive, and a no-op
@@ -162,7 +168,7 @@ made commits, counting step 1's, but ended without one (a duplicate-drop
 or skipped last source, or any early stop), still push, with a call that
 stages nothing new:
 
-    pwsh -NoProfile -File ./.claude/kb-commit.ps1 -Path "log.md" -Message "Push pending ingest commits" -Push
+    pwsh -NoProfile -File ./.claude/kb-commit.ps1 -Path "log.md" -Message "Ingest: push pending commits" -Push
 
 If the run made no commits at all, run step 3's unpushed check before
 ending: flush with the same push-only call if it lists anything, and

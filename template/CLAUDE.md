@@ -179,7 +179,8 @@ Append-only, newest entries at the bottom, one `##` heading per run:
 ```
 
 An entry names no commit hash: this file is inside the commit it would name, so
-the hash cannot exist when the entry is written. Use `git log -- <source>`.
+the hash cannot exist when the entry is written. Git history holds that mapping,
+readable by a human with `git log -- <source>` outside an automated run.
 
 Lint runs use `## YYYY-MM-DD - lint`; queries filed back use
 `## YYYY-MM-DD - query`. Git history is the authoritative timeline; `log.md`

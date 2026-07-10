@@ -76,14 +76,17 @@ A valuable answer can become a synthesis page. Offer to file it; never file
 one back without being asked, and never file one back in a headless run,
 since there is no one there to have asked for it.
 
-**Before writing anything, check the tree is clean.** Run `git status --porcelain`.
+**Before writing anything, check the tree is clean.** Run
+`pwsh -NoProfile -File ./.claude/kb-status.ps1 -What Porcelain`.
 `kb-commit.ps1` stages the paths you name exactly as they stand on disk, so a
-modified `index.md`, `log.md`, or `wiki/` page left behind by an interrupted
-ingest or lint run would be committed under your `Query:` subject and pushed.
-If the tree is dirty, commit those recovered edits alone first, with a message
-beginning `Reconcile:` that names the files, and only then file the answer. An
-untracked file under `sources/` is a crashed ingest, not yours: report it, leave
-it, and let the next ingest run reconcile it.
+modified `index.md`, `log.md`, or `wiki/` page, or an untracked `wiki/` page,
+left behind by an interrupted ingest or lint run would be committed under your
+`Query:` subject and pushed. If the tree carries such recovered work, commit it
+alone first, with a message beginning `Reconcile:` that names the files, and
+only then file the answer. An untracked `wiki/` page is recovered work exactly
+as a modified one is, and `kb-commit.ps1` accepts `wiki/` paths, so name it in
+the commit like any other. An untracked file under `sources/` is a crashed
+ingest, not yours: report it, leave it, and let the next ingest run reconcile it.
 
 Then, in one commit:
 
