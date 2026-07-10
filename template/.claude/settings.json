@@ -1,0 +1,28 @@
+{
+  "permissions": {
+    "allow": [
+      "Read", "Glob", "Grep", "Skill", "TodoWrite",
+      "Write(./wiki/**)", "Edit(./wiki/**)",
+      "Write(./index.md)", "Edit(./index.md)",
+      "Write(./log.md)", "Edit(./log.md)",
+      "Bash(ls:*)",
+      "Bash(git status:*)", "Bash(git diff:*)", "Bash(git log:*)",
+      "Bash(git rev-parse:*)", "Bash(git ls-files:*)",
+      "Bash(pwsh -NoProfile -File ./.claude/kb-move.ps1:*)",
+      "Bash(pwsh -NoProfile -File .claude/kb-move.ps1:*)",
+      "Bash(pwsh -NoProfile -File ./.claude/kb-commit.ps1:*)",
+      "Bash(pwsh -NoProfile -File .claude/kb-commit.ps1:*)"
+    ],
+    "deny": [
+      "Write(./sources/**)", "Edit(./sources/**)",
+      "Write(./inbox/**)", "Edit(./inbox/**)",
+      "Write(./.git/**)", "Edit(./.git/**)",
+      "Write(./.claude/**)", "Edit(./.claude/**)",
+      "Bash(mv:*)", "Bash(rm:*)", "Bash(cp:*)",
+      "Bash(curl:*)", "Bash(wget:*)",
+      "Bash(git add:*)", "Bash(git commit:*)", "Bash(git mv:*)",
+      "Bash(git push:*)", "Bash(git remote:*)", "Bash(git config:*)",
+      "Bash(git reset:*)", "Bash(git clean:*)", "Bash(git checkout:*)"
+    ]
+  }
+}
