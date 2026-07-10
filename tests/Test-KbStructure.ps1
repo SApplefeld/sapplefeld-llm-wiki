@@ -74,10 +74,14 @@ function Test-Check {
 
 # Reads a property that may be absent. Under Set-StrictMode, a plain property
 # access on a missing member throws, so every read of parsed JSON goes through here.
+# The property collection is enumerated one at a time rather than projected with
+# .Name, because projecting a member off an empty collection throws the same way.
 function Get-JsonProperty {
     param($Object, [string]$Name)
     if ($null -eq $Object) { return $null }
-    if ($Object.PSObject.Properties.Name -contains $Name) { return $Object.$Name }
+    foreach ($property in $Object.PSObject.Properties) {
+        if ($property.Name -eq $Name) { return $property.Value }
+    }
     return $null
 }
 
